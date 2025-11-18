@@ -1,9 +1,9 @@
-# demo_run_daily_coach.py
 from datetime import date
 
 from db.repository import HealthDataRepository
 from graph.build import build_health_coach_graph
 from graph.state import CoachState
+
 
 def main():
     repo = HealthDataRepository()
@@ -12,10 +12,10 @@ def main():
     # Use the demo participant from your SQL seed: participant_code = 'DEMO01'
     demo_participant = repo.get_participant_by_code("DEMO01")
     if not demo_participant:
-        raise RuntimeError("Demo participant DEMO0v1 not found. Check your seed data.")
+        raise RuntimeError("Demo participant DEMO01 not found. Check your seed data.")
 
-    participant_id = demo_participant["id"]
-    target_date = date.today()   # or any date you have data for
+    participant_id = demo_participant.id
+    target_date = date.today()   # or a specific date with data
 
     initial_state = CoachState(
         participant_id=participant_id,
@@ -23,13 +23,18 @@ def main():
     )
 
     final_state = app.invoke(initial_state)
+    print(final_state.keys())
 
     print("=== Morning Summary ===")
-    print(final_state.morning_summary or "No summary generated.")
+    # ✅ Access as dictionary key instead of attribute
+    print(final_state.get('morning_summary') or "No summary generated.")
 
     print("\n=== Micro-Interventions ===")
-    for i, iv in enumerate(final_state.micro_interventions, start=1):
+    # ✅ Access as dictionary key
+    interventions = final_state.get('micro_interventions', [])
+    for i, iv in enumerate(interventions, start=1):
         print(f"{i}. [{iv.kind}] {iv.title}: {iv.description} (when: {iv.suggested_time})")
 
-if __name__ == "__main__":DailyContextPack
+
+if __name__ == "__main__":
     main()

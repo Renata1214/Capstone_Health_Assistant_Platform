@@ -19,7 +19,7 @@ from db.models import (
     DailyContextPacket,
 )
 
-#Access to the database
+
 def create_supabase_client() -> Client:
     return create_client(settings.supabase_url, settings.supabase_key)
 
@@ -27,29 +27,32 @@ def create_supabase_client() -> Client:
 class HealthDataRepository:
     """
     Repository layer that encapsulates all DB access.
-    If schema changes, you mostly update this file.
+    If the schema changes, you mostly update this file.
     """
 
     def __init__(self, client: Optional[Client] = None):
-        self.client: Client = client or create_supabase_client() #define link/client to the database
+        self.client: Client = client or create_supabase_client()
 
-    # -------- Participants --------
+    # ---------- Participants ----------
+
     def get_participant_by_code(self, participant_code: str) -> Optional[Participant]:
-        resp = (
-            self.client.table("participants") #creates a query builder for the "participants" table.
+        query = (
+            self.client.table("participants")
             .select("*")
             .eq("participant_code", participant_code)
-            .maybe_single() #f more than 1 row → raise error, 0 return none, 1 return it
-            .execute()
+            .maybe_single()
         )
-
-        data = resp.data
-        if not data:
+        resp = query.execute()
+        if resp is None or getattr(resp, "data", None) is None:
             return None
-        return Participant(**data)
+        return Participant(**resp.data)
 
-    # -------- Daily context fetchers --------
+    # ---------- Daily context fetchers ----------
+
     def get_meals_for_date(self, participant_id: str, target_date: date) -> List[Meal]:
+        """
+        All meals eaten on target_date for this participant.
+        """
         start = datetime.combine(target_date, datetime.min.time())
         end = datetime.combine(target_date + timedelta(days=1), datetime.min.time())
 
@@ -61,39 +64,45 @@ class HealthDataRepository:
             .lt("eaten_at", end.isoformat())
             .execute()
         )
-        return [Meal(**row) for row in (resp.data or [])]
+        rows = [] if resp is None or getattr(resp, "data", None) is None else resp.data
+        return [Meal(**row) for row in rows]
 
     def get_water_for_date(
         self, participant_id: str, target_date: date
     ) -> Optional[WaterIntake]:
-        resp = (
+        query = (
             self.client.table("water_intake")
             .select("*")
             .eq("participant_id", participant_id)
             .eq("date", target_date.isoformat())
             .maybe_single()
-            .execute()
         )
-        data = resp.data
-        return WaterIntake(**data) if data else None
+        resp = query.execute()
+        if resp is None or getattr(resp, "data", None) is None:
+            return None
+        return WaterIntake(**resp.data)
 
     def get_daily_checkin_for_date(
         self, participant_id: str, target_date: date
     ) -> Optional[DailyCheckin]:
-        resp = (
+        query = (
             self.client.table("daily_checkins")
             .select("*")
             .eq("participant_id", participant_id)
             .eq("date", target_date.isoformat())
             .maybe_single()
-            .execute()
         )
-        data = resp.data
-        return DailyCheckin(**data) if data else None
+        resp = query.execute()
+        if resp is None or getattr(resp, "data", None) is None:
+            return None
+        return DailyCheckin(**resp.data)
 
     def get_biometrics_for_date(
         self, participant_id: str, target_date: date
     ) -> List[Biometric]:
+        """
+        All biometric records recorded on target_date for this participant.
+        """
         start = datetime.combine(target_date, datetime.min.time())
         end = datetime.combine(target_date + timedelta(days=1), datetime.min.time())
 
@@ -105,11 +114,15 @@ class HealthDataRepository:
             .lt("recorded_at", end.isoformat())
             .execute()
         )
-        return [Biometric(**row) for row in (resp.data or [])]
+        rows = [] if resp is None or getattr(resp, "data", None) is None else resp.data
+        return [Biometric(**row) for row in rows]
 
     def get_chat_entries_for_date(
         self, participant_id: str, target_date: date
     ) -> List[ChatEntry]:
+        """
+        All chat entries for this participant on target_date, ordered by time.
+        """
         resp = (
             self.client.table("chat_entries")
             .select("*")
@@ -118,29 +131,32 @@ class HealthDataRepository:
             .order("created_at", desc=False)
             .execute()
         )
-        return [ChatEntry(**row) for row in (resp.data or [])]
+        rows = [] if resp is None or getattr(resp, "data", None) is None else resp.data
+        return [ChatEntry(**row) for row in rows]
 
     def get_chat_progress_for_date(
         self, participant_id: str, target_date: date
     ) -> Optional[DailyChatProgress]:
-        resp = (
+        query = (
             self.client.table("daily_chat_progress")
             .select("*")
             .eq("participant_id", participant_id)
             .eq("date", target_date.isoformat())
             .maybe_single()
-            .execute()
         )
-        data = resp.data
-        return DailyChatProgress(**data) if data else None
+        resp = query.execute()
+        if resp is None or getattr(resp, "data", None) is None:
+            return None
+        return DailyChatProgress(**resp.data)
 
-    # -------- Aggregated context packet --------
+    # ---------- Aggregated packet ----------
+
     def get_daily_context_packet(
         self, participant_id: str, target_date: date
     ) -> DailyContextPacket:
         """
         Main entrypoint for the agentic system.
-        Fetches all relevant data for a participant on a date.
+        Fetches all relevant data for a participant on a given date.
         """
         meals = self.get_meals_for_date(participant_id, target_date)
         water = self.get_water_for_date(participant_id, target_date)
